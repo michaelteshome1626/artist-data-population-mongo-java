@@ -1,12 +1,8 @@
 package org.example;
 
 import static com.mongodb.client.model.Filters.eq;
-import org.bson.Document;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-import org.bson.json.JsonObject;
+
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URI;
@@ -20,51 +16,22 @@ import java.util.Map;
 import java.util.Properties;
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.Scanner;
 
 public class Main {
 
     private static Properties properties;
     public static void main(String[] args) {
-        System.out.println("Hello world!");
-        String spAuthUri = "https://accounts.spotify.com/api/token";
         String client_id, client_secret;
         HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request;
         HttpResponse<String> response = null;
 
-        try{
-            String  propFilePath = "src/main/resources/prop_dev.properties";
-            File propFile = new File(propFilePath);
-            FileInputStream propFileReader = new FileInputStream(propFile);
-            properties = new Properties();
-            properties.load(propFileReader);
-            propFileReader.close();
-
-        } catch (Exception e){
-            System.out.println(e.getMessage());
-        }
-
+        getPropertiesFile("src/main/resources/prop_dev.properties");
         client_id = properties.getProperty("client_id");
         client_secret = properties.getProperty("client_secret");
 
-        Map<String, String> formData = new HashMap<>();
-
-        formData.put("client_id", client_id);
-        formData.put("client_secret", client_secret);
-        formData.put("grant_type", "client_credentials");
-
-        request = HttpRequest.newBuilder().uri(URI.create(spAuthUri))
-                .header("Content-type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(getFormDataAsString(formData)))
-                .build();
-
-        try{
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            System.out.println(response.body());
-
-        } catch (Exception e){
-            System.out.println(e.getMessage());
-        }
+        response = getSpotifyToken(client_id, client_secret);
+        System.out.println(response.body());
 
         if (response == null){
             System.out.println("No response from authentication token request");
@@ -75,13 +42,31 @@ public class Main {
             System.exit(0);
         }
 
-        JSONObject authObj = new JSONObject(response);
-        String token = authObj.getString("access_token");
+        JSONObject authObj = new JSONObject(response.body());
         String tokenType = authObj.getString("token_type");
+        String token = authObj.getString("access_token");
 
-        
 
+        try{
+            File ids = new File("src/main/resources/artistIds.txt");
+            Scanner scanner = new Scanner(ids);
 
+            while (scanner.hasNext()){
+                String id  = scanner.nextLine();
+                response = makeAlbumsRequest(id, token);
+
+                JSONObject albumsResponse = new JSONObject(response.body());
+//                System.out.println(albumsResponse.get("items"));
+                JSONArray albums = new JSONArray(albumsResponse.get("items").toString());
+                for (int i = 0; i < albums.length(); i ++){
+                    JSONObject album = albums.getJSONObject(i);
+                    System.out.println("Name: " + album.getString("name") + ", Release Date: " + album.getString("release_date"));
+
+                }
+            }
+        } catch (Exception e){
+            System.out.println(e.getMessage());
+        }
 
 //        String uri = "mongodb://localhost:27017";
 //
@@ -96,6 +81,19 @@ public class Main {
 //            }
 //        }
     }
+
+    private static void getPropertiesFile(String filePath){
+        try{
+            File propFile = new File(filePath);
+            FileInputStream propFileReader = new FileInputStream(propFile);
+            properties = new Properties();
+            properties.load(propFileReader);
+            propFileReader.close();
+
+        } catch (Exception e){
+            System.out.println(e.getMessage());
+        }
+    }
     private static String getFormDataAsString(Map<String, String> formData) {
         StringBuilder formBodyBuilder = new StringBuilder();
         for (Map.Entry<String, String> singleEntry : formData.entrySet()) {
@@ -107,6 +105,55 @@ public class Main {
             formBodyBuilder.append(URLEncoder.encode(singleEntry.getValue(), StandardCharsets.UTF_8));
         }
         return formBodyBuilder.toString();
+    }
+
+    private static HttpResponse<String> getSpotifyToken(String client_id, String client_secret){
+        String spAuthUri = "https://accounts.spotify.com/api/token";
+        HttpRequest request;
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> response = null;
+        Map<String, String> formData = new HashMap<>();
+
+        formData.put("client_id", client_id);
+        formData.put("client_secret", client_secret);
+        formData.put("grant_type", "client_credentials");
+
+        request = HttpRequest.newBuilder().uri(URI.create(spAuthUri))
+                .header("Content-type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(getFormDataAsString(formData)))
+                .build();
+
+        try{
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        } catch (Exception e){
+            System.out.println(e.getMessage());
+        }
+        return response;
+    }
+
+    private static HttpResponse<String> makeAlbumsRequest(String id, String token){
+        String albumsUri = "https://api.spotify.com/v1/artists";
+        String queryParams = "?include_groups=album";
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request;
+        HttpResponse<String> response = null;
+
+
+        request = HttpRequest.newBuilder()
+                .uri(URI.create(albumsUri + "/" + id + "/albums" + queryParams))
+                .GET()
+                .header("Authorization", "Bearer " + token)
+                .build();
+
+        try{
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e){
+            System.out.println(e.getMessage());
+
+        }
+
+        return response;
     }
 
 }
