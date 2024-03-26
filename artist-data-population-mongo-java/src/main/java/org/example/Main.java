@@ -11,12 +11,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.io.File;
 import java.io.FileInputStream;
-import java.util.Scanner;
 
 public class Main {
 
@@ -61,6 +58,8 @@ public class Main {
                 for (int i = 0; i < albums.length(); i ++){
                     JSONObject album = albums.getJSONObject(i);
                     System.out.println("Name: " + album.getString("name") + ", Release Date: " + album.getString("release_date"));
+                    List<String> tracks = getTrackList(album.getString("id"), token);
+                    System.out.println(tracks.toString());
 
                 }
             }
@@ -154,6 +153,46 @@ public class Main {
         }
 
         return response;
+    }
+
+    private static List<String> getTrackList(String albumId, String token){
+        String tracksUri = "https://api.spotify.com/v1/albums";
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request;
+        HttpResponse<String> response = null;
+        List<String> results = new ArrayList<String>();
+
+        request = HttpRequest.newBuilder().uri(URI.create(tracksUri + "/" + albumId + "/tracks"))
+                .GET()
+                .header("Authorization", "Bearer " + token)
+                .build();
+
+        try{
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e){
+            System.out.println(e.getMessage());
+        }
+
+        if (response.statusCode() != 200){
+            return null;
+        }
+        else{
+            JSONObject tracksResponse = new JSONObject(response.body());
+            JSONArray items = tracksResponse.getJSONArray("items");
+
+            for (int i = 0; i < items.length(); i ++){
+                JSONObject track = items.getJSONObject(0);
+                results.add(track.getString("name"));
+            }
+
+            return results;
+        }
+
+
+
+    }
+    private static boolean AddAlbumToMongo (String name, String [] artists, String releaseDate, String[] trackList ){
+        return false;
     }
 
 }
