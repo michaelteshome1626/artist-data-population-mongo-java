@@ -2,8 +2,16 @@ package org.example;
 
 import static com.mongodb.client.model.Filters.eq;
 
+import com.mongodb.DocumentToDBRefTransformer;
+import com.mongodb.MongoException;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.result.InsertManyResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.bson.Document;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -22,13 +30,12 @@ public class Main {
         String client_id, client_secret;
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> response = null;
+        List<Document> vinyls = new ArrayList<Document>();
 
         getPropertiesFile("src/main/resources/prop_dev.properties");
         client_id = properties.getProperty("client_id");
         client_secret = properties.getProperty("client_secret");
-
         response = getSpotifyToken(client_id, client_secret);
-        System.out.println(response.body());
 
         if (response == null){
             System.out.println("No response from authentication token request");
@@ -40,7 +47,6 @@ public class Main {
         }
 
         JSONObject authObj = new JSONObject(response.body());
-        String tokenType = authObj.getString("token_type");
         String token = authObj.getString("access_token");
 
 
@@ -48,37 +54,51 @@ public class Main {
             File ids = new File("src/main/resources/artistIds.txt");
             Scanner scanner = new Scanner(ids);
 
-            while (scanner.hasNext()){
-                String id  = scanner.nextLine();
-                response = makeAlbumsRequest(id, token);
+            try (MongoClient mc = MongoClients.create("mongodb://localhost:27017")){
+                MongoDatabase database = mc.getDatabase("vinylstore");
+                MongoCollection<Document> collection = database.getCollection("vinyls");
+                while (scanner.hasNext()){
+                    String id  = scanner.nextLine();
+                    response = makeAlbumsRequest(id, token);
 
-                JSONObject albumsResponse = new JSONObject(response.body());
-//                System.out.println(albumsResponse.get("items"));
-                JSONArray albums = new JSONArray(albumsResponse.get("items").toString());
-                for (int i = 0; i < albums.length(); i ++){
-                    JSONObject album = albums.getJSONObject(i);
-                    System.out.println("Name: " + album.getString("name") + ", Release Date: " + album.getString("release_date"));
-                    List<String> tracks = getTrackList(album.getString("id"), token);
-                    System.out.println(tracks.toString());
+                    JSONObject albumsResponse = new JSONObject(response.body());
+                    JSONArray albums = new JSONArray(albumsResponse.get("items").toString());
+                    for (int i = 0; i < albums.length(); i ++){
+                        JSONObject album = albums.getJSONObject(i);
+                        List<String> tracks = getTrackList(album.getString("id"), token);
 
+                        JSONArray artistArray = new JSONArray(album.getJSONArray("artists"));
+                        List<String> artists = new ArrayList<String>();
+                        for (int j = 0; j< artistArray.length(); j ++){
+                            artists.add(artistArray.getJSONObject(j).get("name").toString());
+                        }
+
+                        Document d = new Document();
+                        int stock = (int) Math.floor(Math.random() * (50 - 10 + 1) + 10);
+                        d.append("name", album.getString("name"));
+                        d.append("artists", artists);
+                        d.append("release_date", album.getString("release_date"));
+                        d.append("track_list", tracks);
+                        d.append("cover_art", album.getJSONArray("images").getJSONObject(0).get("url").toString());
+                        d.append("stock", stock);
+                        vinyls.add(d);
+                    }
                 }
+
+                if (vinyls.isEmpty()){
+                    System.out.println("Error pulling albums from Spotify");
+                }
+                else{
+                    InsertManyResult manyResult = collection.insertMany(vinyls);
+                }
+            } catch (MongoException me){
+                System.out.println("Mongo connection failed: " + me.getMessage());
             }
+
         } catch (Exception e){
             System.out.println(e.getMessage());
         }
 
-//        String uri = "mongodb://localhost:27017";
-//
-//        try (MongoClient mongoClient = MongoClients.create(uri)) {
-//            MongoDatabase database = mongoClient.getDatabase("bookstore");
-//            MongoCollection<Document> collection = database.getCollection("books");
-//            Document doc = collection.find(eq("title", "The Way of Kings")).first();
-//            if (doc != null) {
-//                System.out.println(doc.toJson());
-//            } else {
-//                System.out.println("No matching documents found.");
-//            }
-//        }
     }
 
     private static void getPropertiesFile(String filePath){
@@ -162,7 +182,7 @@ public class Main {
         HttpResponse<String> response = null;
         List<String> results = new ArrayList<String>();
 
-        request = HttpRequest.newBuilder().uri(URI.create(tracksUri + "/" + albumId + "/tracks"))
+        request = HttpRequest.newBuilder().uri(URI.create(tracksUri + "/" + albumId + "/tracks?limit=50"))
                 .GET()
                 .header("Authorization", "Bearer " + token)
                 .build();
@@ -181,14 +201,12 @@ public class Main {
             JSONArray items = tracksResponse.getJSONArray("items");
 
             for (int i = 0; i < items.length(); i ++){
-                JSONObject track = items.getJSONObject(0);
+                JSONObject track = items.getJSONObject(i);
                 results.add(track.getString("name"));
             }
 
             return results;
         }
-
-
 
     }
     private static boolean AddAlbumToMongo (String name, String [] artists, String releaseDate, String[] trackList ){
