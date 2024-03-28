@@ -1,8 +1,5 @@
 package org.example;
 
-import static com.mongodb.client.model.Filters.eq;
-
-import com.mongodb.DocumentToDBRefTransformer;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
