@@ -78,7 +78,19 @@ public class Main {
                         d.append("track_list", tracks);
                         d.append("cover_art", album.getJSONArray("images").getJSONObject(0).get("url").toString());
                         d.append("stock", stock);
-                        vinyls.add(d);
+                        boolean present = false;
+                        for (Document vinyl: vinyls){
+                            if (!vinyl.get("name").toString().equals(d.getString("name"))
+                            && !vinyl.get("release_date").toString().equals(d.getString("release_date"))){
+                                continue;
+                            }
+                            present = true;
+                            break;
+                        }
+
+                        if (!present){
+                            vinyls.add(d);
+                        }
                     }
                 }
 
