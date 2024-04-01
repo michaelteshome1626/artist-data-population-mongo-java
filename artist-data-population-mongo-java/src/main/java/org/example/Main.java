@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.bson.Document;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -28,6 +29,7 @@ public class Main {
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> response = null;
         List<Document> vinyls = new ArrayList<Document>();
+        Double[] prices = {25.00, 30.00, 32.00, 45.00, 50.00};
 
         getPropertiesFile("src/main/resources/prop_dev.properties");
         client_id = properties.getProperty("client_id");
@@ -70,10 +72,14 @@ public class Main {
                             artists.add(artistArray.getJSONObject(j).get("name").toString());
                         }
 
+                        List<String> genres = getAlbumDetails(album.getString("id"), token);
                         Document d = new Document();
                         int stock = (int) Math.floor(Math.random() * (50 - 10 + 1) + 10);
+                        int priceIndex = (int) Math.floor(Math.random() * (4 + 1));
                         d.append("name", album.getString("name"));
                         d.append("artists", artists);
+                        d.append("genres", genres);
+                        d.append("price", prices[priceIndex]);
                         d.append("release_date", album.getString("release_date"));
                         d.append("track_list", tracks);
                         d.append("cover_art", album.getJSONArray("images").getJSONObject(0).get("url").toString());
@@ -218,8 +224,39 @@ public class Main {
         }
 
     }
-    private static boolean AddAlbumToMongo (String name, String [] artists, String releaseDate, String[] trackList ){
-        return false;
+
+    private static List<String> getAlbumDetails(String id, String token){
+        String uri = "https://api.spotify.com/v1/albums/" + id;
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request;
+        HttpResponse<String> response = null;
+
+        List<String> results = new ArrayList<String>();
+
+        request = HttpRequest.newBuilder().uri(URI.create(uri))
+                .GET()
+                .header("Authorization", "Bearer " + token)
+                .build();
+
+        try{
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        } catch (Exception e){
+            System.out.println(e.getMessage());
+        }
+
+        if (response != null){
+            JSONObject responseBody = new JSONObject(response.body());
+
+            JSONArray genres = new JSONArray(responseBody.getJSONArray("genres"));
+
+            for (int i = 0; i<genres.length(); i++){
+                results.add(genres.getString(i));
+            }
+        }
+
+        return results;
+
     }
 
 }
